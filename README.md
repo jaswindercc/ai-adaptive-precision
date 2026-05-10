@@ -16,7 +16,6 @@
 </div>
 
 ---
-
 ## Why Adaptive Precision?
 
 AI inference is expensive. Running every model at FP32 wastes compute, energy, and money — especially when FP16 or INT8 can deliver near-identical accuracy at a fraction of the cost:
