@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adaptive-precision"
+version = "0.1.0"
+description = "Adaptive Precision Scaling for AI Inference — dynamically adjust numerical precision (FP32/FP16/INT8) based on real-time hardware metrics, cost, and energy constraints."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Jaswinder Singh", email = "hello@jaswinder.cc"},
+]
+keywords = ["ai", "inference", "precision", "quantization", "edge-ai", "optimization", "mlops"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Hardware",
+]
+dependencies = [
+    "psutil>=5.9",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+torch = ["torch>=2.0"]
+tensorflow = ["tensorflow>=2.13"]
+onnx = ["onnxruntime>=1.15"]
+all = ["torch>=2.0", "onnxruntime>=1.15"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+]
+
+[project.urls]
+Homepage = "https://jaswinder.cc/"
+Repository = "https://github.com/jaswindercc/ai-adaptive-precision"
+Documentation = "https://github.com/jaswindercc/ai-adaptive-precision#readme"
+Issues = "https://github.com/jaswindercc/ai-adaptive-precision/issues"
+Paper = "https://github.com/jaswindercc/ai-adaptive-precision/blob/main/Low-Cost-AI-Infrastructure-Strategies-and-Optimizationv8.pdf"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+adaptive_precision = ["dashboard.html"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"

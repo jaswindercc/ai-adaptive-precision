@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adaptive Precision Scaling — Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --purple: #bc8cff; --orange: #f0883e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+    min-height: 100vh;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Header */
+  .header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 16px 24px; display: flex; align-items: center; gap: 16px;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header h1 span { color: var(--accent); }
+  .header .links { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    display: inline-block; animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.5; } }
+
+  /* Layout */
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  .grid { display: grid; gap: 20px; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  @media (max-width: 900px) {
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px;
+  }
+  .card h2 {
+    font-size: 14px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;
+  }
+  .card h2 .icon { margin-right: 6px; }
+
+  /* Stat cards */
+  .stat { text-align: center; }
+  .stat .value { font-size: 36px; font-weight: 700; color: var(--accent); }
+  .stat .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .stat.green .value { color: var(--green); }
+  .stat.yellow .value { color: var(--yellow); }
+  .stat.red .value { color: var(--red); }
+  .stat.purple .value { color: var(--purple); }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--muted); font-weight: 600;
+       padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  tr:hover td { background: rgba(88,166,255,0.04); }
+
+  /* Badges */
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600;
+  }
+  .badge-fp32 { background: rgba(88,166,255,0.15); color: var(--accent); }
+  .badge-fp16 { background: rgba(63,185,80,0.15); color: var(--green); }
+  .badge-bf16 { background: rgba(188,140,255,0.15); color: var(--purple); }
+  .badge-int8 { background: rgba(240,136,62,0.15); color: var(--orange); }
+
+  /* Buttons */
+  .btn {
+    background: var(--accent); color: #fff; border: none; padding: 8px 20px;
+    border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-sm { padding: 5px 14px; font-size: 13px; }
+  .btn-outline {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-outline.active { border-color: var(--accent); color: var(--accent);
+    background: rgba(88,166,255,0.1); }
+
+  /* Controls */
+  select, input[type=number] {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 12px; border-radius: 6px; font-size: 14px;
+  }
+  .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .controls label { font-size: 13px; color: var(--muted); }
+
+  /* Bar chart */
+  .bar-group { margin-bottom: 12px; }
+  .bar-label { font-size: 13px; margin-bottom: 4px; display: flex;
+    justify-content: space-between; }
+  .bar-track {
+    height: 24px; background: var(--bg); border-radius: 4px; overflow: hidden;
+    position: relative;
+  }
+  .bar-fill {
+    height: 100%; border-radius: 4px; transition: width 0.6s ease;
+    display: flex; align-items: center; padding-left: 8px;
+    font-size: 12px; font-weight: 600; color: #fff; min-width: fit-content;
+  }
+  .bar-fp32 { background: var(--accent); }
+  .bar-fp16 { background: var(--green); }
+  .bar-bf16 { background: var(--purple); }
+  .bar-int8 { background: var(--orange); }
+
+  /* Gauge */
+  .gauge-row { display: flex; gap: 16px; align-items: center; margin-bottom: 10px; }
+  .gauge-label { width: 80px; font-size: 13px; color: var(--muted); }
+  .gauge-track { flex: 1; height: 14px; background: var(--bg);
+    border-radius: 7px; overflow: hidden; }
+  .gauge-fill { height: 100%; border-radius: 7px; transition: width 0.8s ease; }
+  .gauge-val { width: 50px; text-align: right; font-size: 13px; font-weight: 600; }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block; width: 16px; height: 16px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    margin-right: 8px; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Footer */
+  .footer {
+    text-align: center; padding: 32px; font-size: 13px; color: var(--muted);
+    border-top: 1px solid var(--border); margin-top: 40px;
+  }
+
+  /* Inference log */
+  .log {
+    max-height: 260px; overflow-y: auto; font-family: 'SF Mono', monospace;
+    font-size: 12px; line-height: 1.8; background: var(--bg);
+    border-radius: 6px; padding: 12px;
+  }
+  .log::-webkit-scrollbar { width: 6px; }
+  .log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .section-gap { margin-top: 20px; }
+
+  /* Explainer text */
+  .explainer {
+    font-size: 13px; color: var(--muted); line-height: 1.7;
+    background: rgba(88,166,255,0.04); border-radius: 6px;
+    padding: 10px 14px; border-left: 2px solid var(--border);
+  }
+  .explainer strong { color: var(--text); }
+  .explainer em { color: var(--yellow); font-style: normal; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab {
+    padding: 6px 16px; border-radius: 6px; cursor: pointer;
+    font-size: 13px; font-weight: 500; color: var(--muted);
+    border: 1px solid transparent; transition: all 0.2s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); background: rgba(88,166,255,0.1);
+    border-color: rgba(88,166,255,0.3); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="status-dot"></span>
+  <h1>⚡ <span>Adaptive Precision</span> Scaling</h1>
+  <div class="links">
+    <a href="https://jaswinder.cc/" target="_blank">Author</a>
+    <a href="https://github.com/jaswindercc/ai-adaptive-precision/blob/main/Low-Cost-AI-Infrastructure-Strategies-and-Optimizationv8.pdf" target="_blank">Paper (PDF)</a>
+    <a href="https://github.com/jaswindercc/ai-adaptive-precision" target="_blank">GitHub</a>
+    <a href="/api/health" target="_blank">API</a>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Hero explainer -->
+  <div class="card section-gap" style="border-left:3px solid var(--accent)">
+    <h2 style="color:var(--accent);text-transform:none;font-size:16px;letter-spacing:0">What is this?</h2>
+    <p style="font-size:14px;margin-bottom:10px">
+      AI models use numbers to think. Those numbers can be stored in different precisions —
+      <strong>FP32</strong> (full quality, most expensive),
+      <strong>FP16</strong> (half precision, ~60% cheaper), or
+      <strong>INT8</strong> (quarter precision, ~75% cheaper).
+      Lower precision = faster + cheaper, but slightly less accurate.
+    </p>
+    <p style="font-size:14px;margin-bottom:10px">
+      <strong>This system automatically picks the best precision</strong> based on your hardware conditions
+      (CPU load, GPU temperature, etc.) — like a car switching between eco/normal/sport mode on its own.
+    </p>
+    <p style="font-size:13px;color:var(--muted)">
+      📄 Based on the paper
+      "<a href=\"https://github.com/jaswindercc/ai-adaptive-precision/blob/main/Low-Cost-AI-Infrastructure-Strategies-and-Optimizationv8.pdf\" target=\"_blank\">Low-Cost AI Infrastructure: Strategies and Optimization</a>"
+      by <a href="https://jaswinder.cc/" target="_blank">Jaswinder Singh</a>.
+      The hardware monitoring below is <strong style="color:var(--green)">live from this machine</strong>.
+      Simulations use a placeholder model — swap it with a real AI model for production use.
+    </p>
+  </div>
+
+  <!-- Top stats -->
+  <div class="grid grid-4 section-gap" id="top-stats">
+    <div class="card stat green">
+      <div class="value" id="stat-cpu">—</div>
+      <div class="label">CPU Usage %</div>
+      <div class="label" style="margin-top:2px;font-size:11px">🟢 Live from this machine</div>
+    </div>
+    <div class="card stat">
+      <div class="value" id="stat-mem">—</div>
+      <div class="label">Memory Usage %</div>
+      <div class="label" style="margin-top:2px;font-size:11px">🟢 Live from this machine</div>
+    </div>
+    <div class="card stat purple">
+      <div class="value" id="stat-gpu">N/A</div>
+      <div class="label">GPU Utilization %</div>
+      <div class="label" style="margin-top:2px;font-size:11px">Shows N/A if no GPU detected</div>
+    </div>
+    <div class="card stat yellow">
+      <div class="value" id="stat-precision">—</div>
+      <div class="label">Recommended Precision</div>
+      <div class="label" style="margin-top:2px;font-size:11px">What the controller would pick now</div>
+    </div>
+  </div>
+
+  <!-- Hardware gauges + Strategy decisions -->
+  <div class="grid grid-2 section-gap">
+    <div class="card">
+      <h2><span class="icon">📊</span> Live Hardware Metrics</h2>
+      <p class="explainer">
+        These are <strong>real readings</strong> from the machine running this server, updated every 2 seconds.
+        The system uses these metrics to decide which precision mode to use.
+        High CPU/GPU usage or temperature → switch to lighter precision to reduce load.
+      </p>
+      <div id="hw-gauges" style="margin-top:12px">
+        <div class="gauge-row">
+          <div class="gauge-label">CPU</div>
+          <div class="gauge-track"><div class="gauge-fill" id="g-cpu" style="width:0%;background:var(--green)"></div></div>
+          <div class="gauge-val" id="gv-cpu">0%</div>
+        </div>
+        <div class="gauge-row">
+          <div class="gauge-label">Memory</div>
+          <div class="gauge-track"><div class="gauge-fill" id="g-mem" style="width:0%;background:var(--accent)"></div></div>
+          <div class="gauge-val" id="gv-mem">0%</div>
+        </div>
+        <div class="gauge-row">
+          <div class="gauge-label">GPU</div>
+          <div class="gauge-track"><div class="gauge-fill" id="g-gpu" style="width:0%;background:var(--purple)"></div></div>
+          <div class="gauge-val" id="gv-gpu">N/A</div>
+        </div>
+        <div class="gauge-row">
+          <div class="gauge-label">GPU Temp</div>
+          <div class="gauge-track"><div class="gauge-fill" id="g-temp" style="width:0%;background:var(--orange)"></div></div>
+          <div class="gauge-val" id="gv-temp">N/A</div>
+        </div>
+      </div>
+      <p style="margin-top:12px;font-size:12px;color:var(--muted)">🟢 Auto-refreshes every 2 seconds · Reading real hardware sensors</p>
+    </div>
+
+    <div class="card">
+      <h2><span class="icon">🧠</span> Strategy Decisions</h2>
+      <p class="explainer">
+        The system supports <strong>5 different strategies</strong> for choosing precision.
+        Below shows what each strategy <strong>would pick right now</strong> based on the live hardware readings on the left.
+        Think of these as different "driving modes" — some prioritize saving money, others prioritize accuracy.
+      </p>
+      <table style="margin-top:12px">
+        <thead><tr><th>Strategy</th><th>Would Pick</th><th>Why</th></tr></thead>
+        <tbody id="strategy-table"><tr><td colspan="3" style="color:var(--muted)">Loading...</td></tr></tbody>
+      </table>
+      <p style="margin-top:10px;font-size:12px;color:var(--muted)">🟢 Live — re-evaluates against current hardware every 5 seconds</p>
+    </div>
+  </div>
+
+  <!-- Precision Levels -->
+  <div class="card section-gap">
+    <h2><span class="icon">📐</span> Precision Levels Explained</h2>
+    <p class="explainer">
+      AI models do math using numbers. These numbers can be represented with different levels of precision.
+      <strong>FP32</strong> uses 32 bits per number (full quality), <strong>FP16</strong> uses 16 bits (half the memory, nearly as accurate),
+      and <strong>INT8</strong> uses only 8 bits (quarter memory, fastest, slight accuracy loss).
+      The table below compares them side-by-side.
+    </p>
+    <table style="margin-top:12px">
+      <thead>
+        <tr><th>Precision</th><th>Bits</th><th>Speedup</th><th>Memory Saved</th><th>Accuracy Drop</th><th>Relative Speed</th></tr>
+      </thead>
+      <tbody id="precision-table"><tr><td colspan="6" style="color:var(--muted)">Loading...</td></tr></tbody>
+    </table>
+    <p style="margin-top:10px;font-size:12px;color:var(--muted)">ℹ️ These are industry-standard benchmarks from the paper. Not simulated.</p>
+  </div>
+
+  <!-- Cost Analysis -->
+  <div class="card section-gap">
+    <h2><span class="icon">💰</span> Cost Analysis — How Much Can You Save?</h2>
+    <p class="explainer">
+      This shows <strong>calculated cost estimates</strong> for running 1,000 AI inferences on different hardware.
+      Click each tab to compare cloud GPUs (A100, H100, T4, L4) vs edge devices (Jetson Nano) vs a generic CPU.
+      Costs use <strong>real cloud pricing</strong> (e.g., NVIDIA T4 = $0.55/hr, A100 = $35/hr).
+      The "Saving" column shows how much you'd save by switching from FP32 to a lower precision.
+    </p>
+    <div class="tabs" id="cost-tabs" style="margin-top:12px"></div>
+    <div id="cost-panels"></div>
+    <p style="margin-top:10px;font-size:12px;color:var(--muted)">ℹ️ Calculated from real cloud GPU pricing. Not a live measurement.</p>
+  </div>
+
+  <!-- Simulation -->
+  <div class="card section-gap">
+    <h2><span class="icon">🚀</span> Inference Simulation</h2>
+    <p class="explainer">
+      This runs a <strong>simulated workload</strong> — a placeholder model processes random inputs while the
+      Precision Controller automatically decides which precision to use. It demonstrates <em>how the system
+      adapts in real-time</em>. The cost/energy numbers are calculated using real cloud pricing formulas.
+      <br><strong>To try with a real model:</strong> swap the placeholder with a PyTorch or ONNX model using the library's wrapper classes.
+    </p>
+    <div class="controls" style="margin-top:14px;margin-bottom:16px">
+      <label>Strategy:</label>
+      <select id="sim-strategy">
+        <option value="balanced" selected>Balanced (best overall)</option>
+        <option value="rule_based">Rule-Based (thresholds)</option>
+        <option value="cost_optimized">Cost-Optimized (cheapest)</option>
+        <option value="accuracy_first">Accuracy-First (best quality)</option>
+        <option value="energy_efficient">Energy-Efficient (greenest)</option>
+      </select>
+      <label>Inferences:</label>
+      <input type="number" id="sim-count" value="200" min="10" max="5000" step="10" style="width:80px">
+      <button class="btn" id="sim-btn" onclick="runSimulation()">▶ Run Simulation</button>
+    </div>
+
+    <div class="grid grid-2">
+      <div>
+        <h3 style="font-size:13px;color:var(--muted);margin-bottom:10px">
+          Which precision was chosen? (shows % of inferences at each level)
+        </h3>
+        <div id="sim-bars">
+          <p style="color:var(--muted);font-size:13px">👆 Click "Run Simulation" above to start</p>
+        </div>
+        <div id="sim-stats" style="margin-top:16px"></div>
+      </div>
+      <div>
+        <h3 style="font-size:13px;color:var(--muted);margin-bottom:10px">
+          Inference-by-inference log (first 50 shown)
+        </h3>
+        <div class="log" id="sim-log">
+          <span style="color:var(--muted)">Each line shows: inference #, precision chosen, latency, and estimated cost.</span>
+        </div>
+      </div>
+    </div>
+    <p style="margin-top:12px;font-size:12px;color:var(--muted)">
+      ⚠️ Simulated — uses a placeholder model (not a real neural network). Latency reflects switching overhead only.
+      Cost is calculated using real cloud GPU pricing formulas from the paper.
+    </p>
+  </div>
+
+  <!-- Benchmark -->
+  <div class="card section-gap">
+    <h2><span class="icon">⏱️</span> Precision Benchmark</h2>
+    <p class="explainer">
+      Measures the <strong>speed of the precision-switching system itself</strong> (not a real model).
+      Runs 50 inferences at each precision level and reports latency, throughput, and projected cost.
+      This demonstrates that the system can switch precisions with near-zero overhead.
+    </p>
+    <button class="btn btn-sm" id="bench-btn" onclick="runBenchmark()" style="margin-top:10px">▶ Run Benchmark (50 iterations per precision)</button>
+    <div id="bench-results" style="margin-top:16px">
+      <p style="color:var(--muted);font-size:13px">👆 Click to benchmark all precision levels</p>
+    </div>
+    <p id="bench-note" style="margin-top:10px;font-size:12px;color:var(--muted);display:none">
+      ⚠️ Latency shown is for the precision-switching wrapper, not a real model. With a real model, latencies would be higher but relative speedups between precisions would be similar.
+    </p>
+  </div>
+
+</div>
+
+<div class="footer">
+  <strong>Adaptive Precision Scaling System</strong> · Proof of Concept<br>
+  Based on the paper
+  "<a href=\"https://github.com/jaswindercc/ai-adaptive-precision/blob/main/Low-Cost-AI-Infrastructure-Strategies-and-Optimizationv8.pdf\" target=\"_blank\">Low-Cost AI Infrastructure: Strategies and Optimization</a>"
+  by <a href="https://jaswinder.cc/" target="_blank">Jaswinder Singh</a><br>
+  <span style="margin-top:4px;display:inline-block">
+    <a href="https://github.com/jaswindercc/ai-adaptive-precision" target="_blank">GitHub</a> · MIT License ·
+    Hardware monitoring is live · Simulations use a placeholder model
+  </span>
+</div>
+
+<script>
+const API = '';
+
+function badgeFor(p) {
+  const cls = 'badge badge-' + p.toLowerCase().replace('/', '');
+  return `<span class="${cls}">${p}</span>`;
+}
+
+function colorFor(p) {
+  const map = { FP32: 'var(--accent)', FP16: 'var(--green)', BF16: 'var(--purple)', INT8: 'var(--orange)' };
+  return map[p] || 'var(--muted)';
+}
+
+function barClass(p) {
+  return 'bar-' + p.toLowerCase();
+}
+
+/* ── Hardware polling ── */
+let hwInterval;
+async function pollHardware() {
+  try {
+    const r = await fetch(API + '/api/hardware');
+    const d = await r.json();
+    document.getElementById('stat-cpu').textContent = d.cpu_percent + '%';
+    document.getElementById('stat-mem').textContent = d.memory_percent + '%';
+    document.getElementById('stat-gpu').textContent = d.gpu_utilization != null ? d.gpu_utilization + '%' : 'N/A';
+
+    // Gauges
+    setGauge('g-cpu', 'gv-cpu', d.cpu_percent, '%');
+    setGauge('g-mem', 'gv-mem', d.memory_percent, '%');
+    setGauge('g-gpu', 'gv-gpu', d.gpu_utilization, '%');
+    setGauge('g-temp', 'gv-temp', d.gpu_temperature_c, '°C', 100);
+  } catch(e) { console.error('HW poll error', e); }
+}
+
+function setGauge(fillId, valId, value, suffix, max) {
+  max = max || 100;
+  const el = document.getElementById(fillId);
+  const vl = document.getElementById(valId);
+  if (value == null) { el.style.width = '0%'; vl.textContent = 'N/A'; return; }
+  el.style.width = Math.min(value / max * 100, 100) + '%';
+  vl.textContent = value + suffix;
+
+  // Color based on value
+  if (value > 80) el.style.background = 'var(--red)';
+  else if (value > 60) el.style.background = 'var(--yellow)';
+}
+
+/* ── Strategies ── */
+const STRATEGY_HINTS = {
+  rule_based: 'Uses simple thresholds (temp > 80°C? → reduce precision)',
+  cost_optimized: 'Always picks cheapest option unless accuracy tanks',
+  accuracy_first: 'Always picks highest quality, only drops under extreme load',
+  energy_efficient: 'Minimizes power consumption and carbon footprint',
+  balanced: 'Scores all options and picks the best trade-off',
+};
+
+async function loadStrategies() {
+  try {
+    const r = await fetch(API + '/api/strategies');
+    const d = await r.json();
+    const tbody = document.getElementById('strategy-table');
+    tbody.innerHTML = Object.entries(d.strategies).map(([name, s]) =>
+      `<tr>
+        <td><span style="font-weight:600">${name}</span>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${STRATEGY_HINTS[name] || ''}</div></td>
+        <td>${badgeFor(s.selected)}</td>
+        <td style="font-size:13px;color:var(--muted)">${s.reason}</td>
+      </tr>`
+    ).join('');
+    document.getElementById('stat-precision').textContent = d.strategies.balanced.selected;
+  } catch(e) { console.error('Strategy error', e); }
+}
+
+/* ── Precision table ── */
+async function loadPrecisions() {
+  try {
+    const r = await fetch(API + '/api/precisions');
+    const data = await r.json();
+    const tbody = document.getElementById('precision-table');
+    const maxSpeedup = Math.max(...data.map(p => p.speedup));
+    tbody.innerHTML = data.map(p => {
+      const pct = (p.speedup / maxSpeedup * 100).toFixed(0);
+      const dropMin = (p.accuracy_drop.min * 100).toFixed(1);
+      const dropMax = (p.accuracy_drop.max * 100).toFixed(1);
+      return `<tr>
+        <td>${badgeFor(p.name)}</td>
+        <td>${p.bits}-bit</td>
+        <td>${p.speedup}x faster</td>
+        <td>${(100 - p.memory_ratio * 100).toFixed(0)}% saved</td>
+        <td>${dropMin}% – ${dropMax}%</td>
+        <td><div class="bar-track" style="height:16px"><div class="bar-fill ${barClass(p.name)}"
+          style="width:${pct}%">${p.speedup}x</div></div></td>
+      </tr>`;
+    }).join('');
+  } catch(e) { console.error('Precision error', e); }
+}
+
+/* ── Cost comparison ── */
+async function loadCost() {
+  try {
+    const r = await fetch(API + '/api/cost');
+    const data = await r.json();
+    const tabsEl = document.getElementById('cost-tabs');
+    const panelsEl = document.getElementById('cost-panels');
+    let tabsHtml = '', panelsHtml = '';
+    let first = true;
+
+    for (const [hwType, hw] of Object.entries(data)) {
+      const active = first ? ' active' : '';
+      tabsHtml += `<div class="tab${active}" onclick="switchCostTab('${hwType}')"
+        id="cost-tab-${hwType}">${hw.name}</div>`;
+
+      let tableRows = '';
+      const fp32Cost = hw.precisions.FP32?.cost_per_1k || 1;
+      for (const [prec, d] of Object.entries(hw.precisions)) {
+        const saving = ((1 - d.cost_per_1k / fp32Cost) * 100).toFixed(1);
+        const savingBadge = prec !== 'FP32'
+          ? `<span style="color:var(--green);font-size:12px">▼ ${saving}%</span>` : '';
+        tableRows += `<tr>
+          <td>${badgeFor(prec)}</td>
+          <td>${d.latency_ms.toFixed(2)} ms</td>
+          <td>$${d.cost_per_1k.toFixed(6)}</td>
+          <td>${d.energy_kwh_per_1k.toFixed(8)}</td>
+          <td>${d.carbon_g_per_1k.toFixed(4)} g</td>
+          <td>${savingBadge}</td>
+        </tr>`;
+      }
+
+      panelsHtml += `<div class="tab-panel${active}" id="cost-panel-${hwType}">
+        <table>
+          <thead><tr><th>Precision</th><th>Latency</th><th>Cost/1K</th><th>Energy kWh</th><th>CO₂</th><th>Saving</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>`;
+      first = false;
+    }
+    tabsEl.innerHTML = tabsHtml;
+    panelsEl.innerHTML = panelsHtml;
+  } catch(e) { console.error('Cost error', e); }
+}
+
+function switchCostTab(id) {
+  document.querySelectorAll('#cost-tabs .tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('#cost-panels .tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('cost-tab-' + id).classList.add('active');
+  document.getElementById('cost-panel-' + id).classList.add('active');
+}
+
+/* ── Simulation ── */
+async function runSimulation() {
+  const btn = document.getElementById('sim-btn');
+  const strategy = document.getElementById('sim-strategy').value;
+  const count = document.getElementById('sim-count').value;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Running...';
+
+  try {
+    const r = await fetch(API + `/api/simulate?strategy=${strategy}&count=${count}`);
+    const d = await r.json();
+
+    // Bars
+    const barsEl = document.getElementById('sim-bars');
+    const total = d.count;
+    let barsHtml = '';
+    for (const [prec, stats] of Object.entries(d.precision_stats)) {
+      const pct = (stats.count / total * 100).toFixed(1);
+      barsHtml += `<div class="bar-group">
+        <div class="bar-label">
+          <span>${prec} — ${stats.count} inferences (${pct}%)</span>
+          <span style="color:var(--muted)">avg ${stats.avg_latency.toFixed(3)}ms</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill ${barClass(prec)}"
+          style="width:${pct}%">${pct}%</div></div>
+      </div>`;
+    }
+    barsEl.innerHTML = barsHtml;
+
+    // Stats
+    const statsEl = document.getElementById('sim-stats');
+    const s = d.status;
+    statsEl.innerHTML = `
+      <table>
+        <tr><td style="color:var(--muted)">Total Inferences</td><td style="font-weight:600">${s.total_inferences}</td></tr>
+        <tr><td style="color:var(--muted)">Total Cost</td><td style="font-weight:600;color:var(--green)">$${s.total_cost_usd.toFixed(6)}</td></tr>
+        <tr><td style="color:var(--muted)">Total CO₂</td><td style="font-weight:600">${s.total_carbon_grams.toFixed(4)} g</td></tr>
+        <tr><td style="color:var(--muted)">Strategy</td><td style="font-weight:600">${s.strategy}</td></tr>
+      </table>`;
+
+    // Log
+    const logEl = document.getElementById('sim-log');
+    logEl.innerHTML = d.samples.map(s =>
+      `<div><span style="color:var(--muted)">#${String(s.index).padStart(4,'0')}</span> ` +
+      `${badgeFor(s.precision)} ` +
+      `<span style="color:var(--muted)">${s.latency_ms.toFixed(3)}ms</span> ` +
+      `<span style="color:var(--green)">$${s.cost_usd.toFixed(8)}</span></div>`
+    ).join('');
+    logEl.scrollTop = logEl.scrollHeight;
+  } catch(e) {
+    console.error('Simulation error', e);
+    document.getElementById('sim-bars').innerHTML =
+      `<p style="color:var(--red)">Error: ${e.message}</p>`;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Run Simulation';
+}
+
+/* ── Benchmark ── */
+async function runBenchmark() {
+  const btn = document.getElementById('bench-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Benchmarking...';
+
+  try {
+    const r = await fetch(API + '/api/benchmark');
+    const data = await r.json();
+    const el = document.getElementById('bench-results');
+
+    let html = '<table><thead><tr>' +
+      '<th>Precision</th><th>Avg Latency</th><th>Min</th><th>Max</th>' +
+      '<th>Throughput</th><th>Cost/1K</th><th>Energy/1K</th><th>CO₂/1K</th>' +
+      '</tr></thead><tbody>';
+
+    for (const [prec, d] of Object.entries(data)) {
+      html += `<tr>
+        <td>${badgeFor(prec)}</td>
+        <td>${d.avg_latency_ms.toFixed(3)} ms</td>
+        <td>${d.min_latency_ms.toFixed(3)} ms</td>
+        <td>${d.max_latency_ms.toFixed(3)} ms</td>
+        <td style="font-weight:600">${d.throughput_per_sec.toLocaleString()} /s</td>
+        <td style="color:var(--green)">$${d.cost_per_1k_usd.toFixed(6)}</td>
+        <td>${d.energy_kwh_per_1k.toFixed(8)}</td>
+        <td>${d.carbon_g_per_1k.toFixed(6)} g</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+    document.getElementById('bench-note').style.display = 'block';
+  } catch(e) {
+    document.getElementById('bench-results').innerHTML =
+      `<p style="color:var(--red)">Error: ${e.message}</p>`;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Run Benchmark (50 iterations per precision)';
+}
+
+/* ── Init ── */
+async function init() {
+  pollHardware();
+  hwInterval = setInterval(pollHardware, 2000);
+  await Promise.all([loadStrategies(), loadPrecisions(), loadCost()]);
+  setInterval(loadStrategies, 5000);
+}
+
+init();
+</script>
+
+</body>
+</html>
